@@ -41,6 +41,8 @@
 *******************************************************************************/
 
 #include "cy_pdl.h"
+#include "cyhal.h"
+#include "cybsp.h"
 
 
 /*******************************************************************************
@@ -58,11 +60,17 @@
 *******************************************************************************/
 int main(void)
 {
+    cy_rslt_t result;
+
+    /* Initialize the device and board peripherals */
+    result = cybsp_init();
+    if (result != CY_RSLT_SUCCESS)
+    {
+        CY_ASSERT(0);
+    }
+
     /* enable interrupts */
     __enable_irq();
-
-    /* Gets core clock frequency and updates SystemCoreClock */
-    SystemCoreClockUpdate();
 
     for(;;)
     {

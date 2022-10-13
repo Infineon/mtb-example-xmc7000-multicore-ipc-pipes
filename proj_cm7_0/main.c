@@ -68,8 +68,8 @@
 *******************************************************************************/
 int main(void)
 {
-    cy_rslt_t result;
     uint32_t  u32Led= 0;
+    cy_rslt_t result;
 
     /* Initialize the device and board peripherals */
     result = cybsp_init();
