@@ -8,7 +8,7 @@
 *
 *
 *******************************************************************************
-* Copyright 2022, Cypress Semiconductor Corporation (an Infineon company) or
+* Copyright 2022-2023, Cypress Semiconductor Corporation (an Infineon company) or
 * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
 *
 * This software, including source code, documentation and related
@@ -119,8 +119,6 @@ int main(void)
 
     /* Initialize LEDs GPIO */
     cyhal_gpio_init(CYBSP_USER_LED, CYHAL_GPIO_DIR_OUTPUT, CYHAL_GPIO_DRIVE_STRONG, CYBSP_LED_STATE_OFF);
-    cyhal_gpio_init(CYBSP_USER_LED2, CYHAL_GPIO_DIR_OUTPUT, CYHAL_GPIO_DRIVE_STRONG, CYBSP_LED_STATE_OFF);
-    cyhal_gpio_init(CYBSP_USER_LED3, CYHAL_GPIO_DIR_OUTPUT, CYHAL_GPIO_DRIVE_STRONG, CYBSP_LED_STATE_OFF);
 
     for(;;)
     {
@@ -159,18 +157,9 @@ void IpcNotifyInt_ISR(void)
             {
                 case 0:
                     cyhal_gpio_write(CYBSP_USER_LED, CYBSP_LED_STATE_ON);   /* Led 1 On */
-                    cyhal_gpio_write(CYBSP_USER_LED2, CYBSP_LED_STATE_OFF); /* Led 2 Off */
-                    cyhal_gpio_write(CYBSP_USER_LED3, CYBSP_LED_STATE_OFF); /* Led 3 Off */
                     break;
                 case 1:
                     cyhal_gpio_write(CYBSP_USER_LED, CYBSP_LED_STATE_OFF);  /* Led 1 Off */
-                    cyhal_gpio_write(CYBSP_USER_LED2, CYBSP_LED_STATE_ON);  /* Led 2 On */
-                    cyhal_gpio_write(CYBSP_USER_LED3, CYBSP_LED_STATE_OFF); /* Led 3 Off */
-                    break;
-                case 2:
-                    cyhal_gpio_write(CYBSP_USER_LED, CYBSP_LED_STATE_OFF);  /* Led 1 Off */
-                    cyhal_gpio_write(CYBSP_USER_LED2, CYBSP_LED_STATE_OFF); /* Led 2 Off */
-                    cyhal_gpio_write(CYBSP_USER_LED3, CYBSP_LED_STATE_ON);  /* Led 3 On */
                     break;
                 default:
                     break;

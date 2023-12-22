@@ -8,7 +8,7 @@
 *
 *
 *******************************************************************************
-* Copyright 2022, Cypress Semiconductor Corporation (an Infineon company) or
+* Copyright 2022-2023, Cypress Semiconductor Corporation (an Infineon company) or
 * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
 *
 * This software, including source code, documentation and related
@@ -108,7 +108,7 @@ int main(void)
             status = Cy_IPC_Drv_IsLockAcquired(Cy_IPC_Drv_GetIpcBaseAddress(USED_IPC_CHANNEL));
         } while(status);
 
-        u32Led = (u32Led + 1u) % 3u;
+        u32Led = (u32Led + 1u) % 2u;
     }
 }
 
