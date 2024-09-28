@@ -8,7 +8,7 @@
 *
 *
 *******************************************************************************
-* Copyright 2022-2023, Cypress Semiconductor Corporation (an Infineon company) or
+* Copyright 2022-2024, Cypress Semiconductor Corporation (an Infineon company) or
 * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
 *
 * This software, including source code, documentation and related
@@ -44,34 +44,80 @@
 #include "cyhal.h"
 #include "cybsp.h"
 
-/*******************************************************************************
-* Macros
-*******************************************************************************/
+/****************************************************************************
+* Constants
+*****************************************************************************/
 #define CM7_DUAL                1
 
-/* IPC channel number */
-#define USED_IPC_CHANNEL        7
+#define CY_IPC_MAX_ENDPOINTS            (2UL) /* 2 endpoints */
+#define CY_IPC_CYPIPE_CLIENT_CNT        (8UL)
 
-/* Release interrupt number. This interrupt is handled by notifier core (CM7) */
-#define IPC_RELEASE_INT_NUMBER  6
+#define CY_IPC_CHAN_CYPIPE_EP0          (CY_IPC_CHAN_USER) /* IPC data channel for CYPIPE EP0 */
+#define CY_IPC_CYPIPE_CHAN_MASK_EP0     (0x0001UL << CY_IPC_CHAN_CYPIPE_EP0)
+#define CY_IPC_INTR_CYPIPE_EP0          (CY_IPC_INTR_USER)   /* IPC Intr for EP0 */
+#define CY_IPC_CYPIPE_INTR_MASK_EP0     (0x0001UL << CY_IPC_INTR_CYPIPE_EP0)   /* IPC Intr Mask for EP0 */
+#define CY_IPC_INTR_CYPIPE_PRIOR_EP0    (1UL)   /* Notifier Priority */
+#define CY_IPC_INTR_CYPIPE_MUX_EP0      (NvicMux3_IRQn)   /* Intr Mux for CM0P */
+#define CY_IPC_EP_CYPIPE_CM0_ADDR       (0UL)   /* EP0 Index of Endpoint Array */
+#define CY_CLIENT_CYPIPE0_CM0_ID0       (0UL)   /* EP0 Pipe0 (CM0 <--> CM7_0) Index of client cb Array */
 
-/* Notify interrupt number. This interrupt is handled by notified core (CM0+) */
-#define IPC_NOTIFY_INT_NUMBER   7
+#define CY_IPC_CHAN_CYPIPE_EP1          (CY_IPC_CHAN_USER + 1UL) /* IPC data channel for CYPIPE EP1 */
+#define CY_IPC_CYPIPE_CHAN_MASK_EP1     (0x0001UL << CY_IPC_CHAN_CYPIPE_EP1)
+#define CY_IPC_INTR_CYPIPE_EP1          (CY_IPC_INTR_USER + 1UL)   /* IPC Intr for EP1 */
+#define CY_IPC_CYPIPE_INTR_MASK_EP1     (0x0001UL << CY_IPC_INTR_CYPIPE_EP1)   /* IPC Intr Mask for EP0 */
+#define CY_IPC_INTR_CYPIPE_PRIOR_EP1    (1UL)   /* Notifier Priority */
+#define CY_IPC_INTR_CYPIPE_MUX_EP1      (NvicMux4_IRQn)   /* Intr Mux for CM7_0 */
+#define CY_IPC_EP_CYPIPE_CM7_0_ADDR     (1UL)   /* EP1 Index of Endpoint Array */
+#define CY_CLIENT_CYPIPE0_CM7_0_ID0     (2UL)   /* EP1 Pipe0 (CM7_0 <--> CM0) Index of client cb Array */
+
+
+/****************************************************************************
+* The pipe configuration defines the IPC channel number, interrupt
+* number, and the pipe interrupt mask for the endpoint.
+*
+* The format of the endPoint configuration
+*   Bits[31:16] Interrupt Mask
+*   Bits[15:8 ] IPC interrupt
+*   Bits[ 7:0 ] IPC channel
+*
+*   Pipe addresses
+*   CyPipe defines
+*****************************************************************************/
+#define CY_IPC_CYPIPE_INTR_MASK   ( CY_IPC_CYPIPE_CHAN_MASK_EP0 | CY_IPC_CYPIPE_CHAN_MASK_EP1)
+
+#define CY_IPC_CYPIPE_CONFIG_EP0  ( (CY_IPC_CYPIPE_INTR_MASK << CY_IPC_PIPE_CFG_IMASK_Pos) \
+                                   | (CY_IPC_INTR_CYPIPE_EP0 << CY_IPC_PIPE_CFG_INTR_Pos) \
+                                    | CY_IPC_CHAN_CYPIPE_EP0)
+
+#define CY_IPC_CYPIPE_CONFIG_EP1  ( (CY_IPC_CYPIPE_INTR_MASK << CY_IPC_PIPE_CFG_IMASK_Pos) \
+                                   | (CY_IPC_INTR_CYPIPE_EP1 << CY_IPC_PIPE_CFG_INTR_Pos) \
+                                    | CY_IPC_CHAN_CYPIPE_EP1)
+
+/*******************************************************************************
+* Global variables
+********************************************************************************/
+typedef struct
+{
+    uint8_t  clientID;      /* Client ID */
+    uint8_t  pktType;       /* Message Type */
+    uint16_t intrRelMask;   /* Mask */
+} cy_stc_ipc_testmsg_t;
+
+typedef enum
+{
+    CY_IPC_PKT_FROM_CM0_TO_CM7_0,
+    CY_IPC_PKT_FROM_CM7_0_TO_CM0,
+} cy_en_ipc_pktType_t;
+
+
+ static cy_stc_ipc_pipe_ep_t IpcPipeEpArray[CY_IPC_MAX_ENDPOINTS]; /* Create an array of endpoint structures */
+ static cy_ipc_pipe_callback_ptr_t ep0CbArray[CY_IPC_CYPIPE_CLIENT_CNT]; /* CB Array for EP0 */
 
 /*******************************************************************************
 * Function Prototypes
 ********************************************************************************/
-void IpcNotifyInt_ISR(void);
-
-/*******************************************************************************
-* Global Variables
-********************************************************************************/
-static cy_stc_sysint_t stcSysIntIpcNotifyInt =
-{
-    .intrSrc = ((NvicMux3_IRQn << 16) | (cy_en_intr_t)(cpuss_interrupts_ipc_0_IRQn + USED_IPC_CHANNEL)),
-    .intrPriority = 2UL
-};
-
+void Pipe0_cm0_RecvMsgCallback(uint32_t * msgData);
+void Cy_SysIpcPipeIsrCm0(void);
 
 /*******************************************************************************
 * Function Name: main
@@ -100,6 +146,36 @@ int main(void)
     /* enable interrupts */
     __enable_irq();
 
+    Cy_IPC_Pipe_Config(IpcPipeEpArray);
+
+    /* Pipe0 endpoint-0 and endpoint-1. CM0 <--> CM7_0 */
+    static const cy_stc_ipc_pipe_config_t systemIpcPipe0ConfigCm0 =
+    {
+        /* receiver endpoint */
+        {
+            CY_IPC_INTR_CYPIPE_EP0,        /* .ipcNotifierNumber    */
+            CY_IPC_INTR_CYPIPE_PRIOR_EP0,  /* .ipcNotifierPriority  */
+            CY_IPC_INTR_CYPIPE_MUX_EP0,    /* .ipcNotifierMuxNumber */
+            CY_IPC_EP_CYPIPE_CM0_ADDR,     /* .epAddress            */
+            CY_IPC_CYPIPE_CONFIG_EP0       /* .epConfig             */
+        },
+        /* sender endpoint */
+        {
+            CY_IPC_INTR_CYPIPE_EP1,        /* .ipcNotifierNumber    */
+            CY_IPC_INTR_CYPIPE_PRIOR_EP1,  /* .ipcNotifierPriority  */
+            CY_IPC_INTR_CYPIPE_MUX_EP1,    /* .ipcNotifierMuxNumber */
+            CY_IPC_EP_CYPIPE_CM7_0_ADDR,   /* .epAddress            */
+            CY_IPC_CYPIPE_CONFIG_EP1       /* .epConfig             */
+        },
+
+        CY_IPC_CYPIPE_CLIENT_CNT, /* .endpointClientsCount     */
+        ep0CbArray,               /* .endpointsCallbacksArray  */
+        &Cy_SysIpcPipeIsrCm0      /* .userPipeIsrHandler       */
+    };
+    Cy_IPC_Pipe_Init(&systemIpcPipe0ConfigCm0); /* PIPE-0 EP0 <--> EP1 */
+    Cy_IPC_Pipe_RegisterCallback(CY_IPC_EP_CYPIPE_CM0_ADDR, &Pipe0_cm0_RecvMsgCallback, (uint32_t)CY_CLIENT_CYPIPE0_CM0_ID0);
+
+
     /* Enable CM7_0/1. CY_CORTEX_M7_APPL_ADDR is calculated in linker script, check it in case of problems. */
     Cy_SysEnableCM7(CORE_CM7_0, CY_CORTEX_M7_0_APPL_ADDR);
 
@@ -107,18 +183,10 @@ int main(void)
     Cy_SysEnableCM7(CORE_CM7_1, CY_CORTEX_M7_1_APPL_ADDR);
 #endif /* CM7_DUAL */
 
-    /* Setup IPC interrupt line */
-    Cy_SysInt_Init(&stcSysIntIpcNotifyInt,IpcNotifyInt_ISR);
-    /* Enable the interrupt */
-    NVIC_EnableIRQ((IRQn_Type) NvicMux3_IRQn);
-
-    /* Don't set the release interrupt. If user needs to use the release interrupt on the client side
-     * user must set it after CM0+ server works.
-     */
-    Cy_IPC_Drv_SetInterruptMask(Cy_IPC_Drv_GetIntrBaseAddr(IPC_NOTIFY_INT_NUMBER),CY_IPC_NO_NOTIFICATION,(1uL << USED_IPC_CHANNEL));
 
     /* Initialize LEDs GPIO */
     cyhal_gpio_init(CYBSP_USER_LED, CYHAL_GPIO_DIR_OUTPUT, CYHAL_GPIO_DRIVE_STRONG, CYBSP_LED_STATE_OFF);
+    cyhal_gpio_init(CYBSP_USER_LED2, CYHAL_GPIO_DIR_OUTPUT, CYHAL_GPIO_DRIVE_STRONG, CYBSP_LED_STATE_OFF);
 
     for(;;)
     {
@@ -127,10 +195,10 @@ int main(void)
 }
 
 /*******************************************************************************
-* Function Name: IpcNotifyInt_ISR
+* Function Name: Pipe0_cm0_RecvMsgCallback
 ********************************************************************************
 * Summary:
-*  IPC interrupt handler .
+* Called when the Pipe0 endpoint-0 (CM0) has received a message..
 *
 * Parameters:
 *  None
@@ -138,36 +206,46 @@ int main(void)
 * Return:
 *  None
 *******************************************************************************/
-void IpcNotifyInt_ISR(void)
+void Pipe0_cm0_RecvMsgCallback(uint32_t * msgData)
 {
-    uint32_t u32Led = 0;
-    /* Get all the enabled pending interrupts */
-    uint32_t intr = Cy_IPC_Drv_GetInterruptStatusMasked(Cy_IPC_Drv_GetIntrBaseAddr(IPC_NOTIFY_INT_NUMBER));
-    uint32_t interruptMasked = Cy_IPC_Drv_ExtractAcquireMask(intr);
 
-    /* Check if the interrupt is caused by the notifier channel */
-    if (interruptMasked == (1uL << USED_IPC_CHANNEL))
+    cy_stc_ipc_testmsg_t *pData = (cy_stc_ipc_testmsg_t*)msgData;
+
+    switch(pData->pktType)
     {
-        /* Clear the interrupt */
-        Cy_IPC_Drv_ClearInterrupt(Cy_IPC_Drv_GetIntrBaseAddr(IPC_NOTIFY_INT_NUMBER),CY_IPC_NO_NOTIFICATION,interruptMasked);
-
-        if(CY_IPC_DRV_SUCCESS == Cy_IPC_Drv_ReadMsgWord(Cy_IPC_Drv_GetIpcBaseAddress(USED_IPC_CHANNEL), &u32Led))
-        {
-            switch(u32Led)
-            {
-                case 0:
-                    cyhal_gpio_write(CYBSP_USER_LED, CYBSP_LED_STATE_ON);   /* Led 1 On */
-                    break;
-                case 1:
-                    cyhal_gpio_write(CYBSP_USER_LED, CYBSP_LED_STATE_OFF);  /* Led 1 Off */
-                    break;
-                default:
-                    break;
-            }
-        }
-        /* Finally release the lock */
-        Cy_IPC_Drv_ReleaseNotify(Cy_IPC_Drv_GetIpcBaseAddress(USED_IPC_CHANNEL), (1u << IPC_RELEASE_INT_NUMBER));
+        case 0:
+            cyhal_gpio_write(CYBSP_USER_LED, CYBSP_LED_STATE_ON);   /* Led 1 On */
+            cyhal_gpio_write(CYBSP_USER_LED2, CYBSP_LED_STATE_OFF); /* Led 2 Off */
+            break;
+        case 1:
+            cyhal_gpio_write(CYBSP_USER_LED, CYBSP_LED_STATE_OFF);  /* Led 1 Off */
+            cyhal_gpio_write(CYBSP_USER_LED2, CYBSP_LED_STATE_ON);  /* Led 2 On */
+            break;
+        case 2:
+            cyhal_gpio_write(CYBSP_USER_LED, CYBSP_LED_STATE_OFF);  /* Led 1 Off */
+            cyhal_gpio_write(CYBSP_USER_LED2, CYBSP_LED_STATE_OFF); /* Led 2 Off */
+            break;
+        default:
+            break;
     }
+
+}
+
+/*******************************************************************************
+* Function Name: Cy_SysIpcPipeIsrCm0
+********************************************************************************
+* Summary:
+* This is the interrupt service routine.
+*
+* Parameters:
+*  None
+*
+* Return:
+*  None
+*******************************************************************************/
+void Cy_SysIpcPipeIsrCm0(void)
+{
+    Cy_IPC_Pipe_ExecuteCallback(CY_IPC_EP_CYPIPE_CM0_ADDR);
 }
 
 /* [] END OF FILE */
