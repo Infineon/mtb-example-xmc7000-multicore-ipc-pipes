@@ -107,10 +107,6 @@ typedef enum
 } cy_en_ipc_pktType_t;
 
 
-static cy_stc_ipc_pipe_ep_t IpcPipeEpArray[CY_IPC_MAX_ENDPOINTS]; /* Create an array of endpoint structures */
-cy_stc_ipc_testmsg_t cm7_0MsgData0;
-static cy_ipc_pipe_callback_ptr_t ep1CbArray[CY_IPC_CYPIPE_CLIENT_CNT]; /* CB Array for EP1 */
-
 /*******************************************************************************
 * Function Prototypes
 ********************************************************************************/
@@ -136,18 +132,9 @@ int main(void)
     uint32_t  u32Led= 0;
     cy_rslt_t result;
     cy_en_ipc_pipe_status_t pipeStatus;
-
-    /* Initialize the device and board peripherals */
-    result = cybsp_init();
-    if (result != CY_RSLT_SUCCESS)
-    {
-        CY_ASSERT(0);
-    }
-
-    /* Enable global interrupts */
-    __enable_irq();
-
-    Cy_IPC_Pipe_Config(IpcPipeEpArray);
+    cy_stc_ipc_testmsg_t cm7_0MsgData0;
+    static cy_stc_ipc_pipe_ep_t IpcPipeEpArray[CY_IPC_MAX_ENDPOINTS]; /* Create an array of endpoint structures */
+    static cy_ipc_pipe_callback_ptr_t ep1CbArray[CY_IPC_CYPIPE_CLIENT_CNT]; /* CB Array for EP1 */
 
     /* Pipe-0 endpoint-1 and endpoint-0. CM7_0 <--> CM0 */
     static const cy_stc_ipc_pipe_config_t systemIpcPipe0ConfigCm7_0 =
@@ -173,6 +160,19 @@ int main(void)
         ep1CbArray,               /* .endpointsCallbacksArray  */
         &Cy_SysIpcPipeIsrCm7_0    /* .userPipeIsrHandler       */
     };
+
+    /* Initialize the device and board peripherals */
+    result = cybsp_init();
+    if (result != CY_RSLT_SUCCESS)
+    {
+        CY_ASSERT(0);
+    }
+
+    /* Enable global interrupts */
+    __enable_irq();
+
+    Cy_IPC_Pipe_Config(IpcPipeEpArray);
+
 
     Cy_IPC_Pipe_Init(&systemIpcPipe0ConfigCm7_0); /* PIPE-0 EP1 <--> EP0 */
 

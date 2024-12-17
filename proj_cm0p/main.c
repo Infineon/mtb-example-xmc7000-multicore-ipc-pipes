@@ -47,7 +47,7 @@
 /****************************************************************************
 * Constants
 *****************************************************************************/
-#define CM7_DUAL                1
+#define CM7_DUAL                0
 
 #define CY_IPC_MAX_ENDPOINTS            (2UL) /* 2 endpoints */
 #define CY_IPC_CYPIPE_CLIENT_CNT        (8UL)
@@ -110,9 +110,6 @@ typedef enum
 } cy_en_ipc_pktType_t;
 
 
- static cy_stc_ipc_pipe_ep_t IpcPipeEpArray[CY_IPC_MAX_ENDPOINTS]; /* Create an array of endpoint structures */
- static cy_ipc_pipe_callback_ptr_t ep0CbArray[CY_IPC_CYPIPE_CLIENT_CNT]; /* CB Array for EP0 */
-
 /*******************************************************************************
 * Function Prototypes
 ********************************************************************************/
@@ -135,18 +132,8 @@ void Cy_SysIpcPipeIsrCm0(void);
 int main(void)
 {
     cy_rslt_t result;
-
-    /* Initialize the device and board peripherals */
-    result = cybsp_init();
-    if (result != CY_RSLT_SUCCESS)
-    {
-        CY_ASSERT(0);
-    }
-
-    /* enable interrupts */
-    __enable_irq();
-
-    Cy_IPC_Pipe_Config(IpcPipeEpArray);
+    static cy_stc_ipc_pipe_ep_t IpcPipeEpArray[CY_IPC_MAX_ENDPOINTS]; /* Create an array of endpoint structures */
+    static cy_ipc_pipe_callback_ptr_t ep0CbArray[CY_IPC_CYPIPE_CLIENT_CNT]; /* CB Array for EP0 */
 
     /* Pipe0 endpoint-0 and endpoint-1. CM0 <--> CM7_0 */
     static const cy_stc_ipc_pipe_config_t systemIpcPipe0ConfigCm0 =
@@ -172,6 +159,19 @@ int main(void)
         ep0CbArray,               /* .endpointsCallbacksArray  */
         &Cy_SysIpcPipeIsrCm0      /* .userPipeIsrHandler       */
     };
+
+    /* Initialize the device and board peripherals */
+    result = cybsp_init();
+    if (result != CY_RSLT_SUCCESS)
+    {
+        CY_ASSERT(0);
+    }
+
+    /* enable interrupts */
+    __enable_irq();
+
+    Cy_IPC_Pipe_Config(IpcPipeEpArray);
+
     Cy_IPC_Pipe_Init(&systemIpcPipe0ConfigCm0); /* PIPE-0 EP0 <--> EP1 */
     Cy_IPC_Pipe_RegisterCallback(CY_IPC_EP_CYPIPE_CM0_ADDR, &Pipe0_cm0_RecvMsgCallback, (uint32_t)CY_CLIENT_CYPIPE0_CM0_ID0);
 
