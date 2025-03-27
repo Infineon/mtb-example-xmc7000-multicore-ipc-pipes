@@ -8,7 +8,7 @@
 *
 *
 *******************************************************************************
-* Copyright 2022-2024, Cypress Semiconductor Corporation (an Infineon company) or
+* Copyright 2022-2025, Cypress Semiconductor Corporation (an Infineon company) or
 * an affiliate of Cypress Semiconductor Corporation.  All rights reserved.
 *
 * This software, including source code, documentation and related
@@ -47,7 +47,7 @@
 /****************************************************************************
 * Constants
 *****************************************************************************/
-#define CM7_DUAL                0
+#define CM7_DUAL                1
 
 #define CY_IPC_MAX_ENDPOINTS            (2UL) /* 2 endpoints */
 #define CY_IPC_CYPIPE_CLIENT_CNT        (8UL)
@@ -180,6 +180,7 @@ int main(void)
     Cy_SysEnableCM7(CORE_CM7_0, CY_CORTEX_M7_0_APPL_ADDR);
 
 #if CM7_DUAL
+    cyhal_system_delay_ms(1);
     Cy_SysEnableCM7(CORE_CM7_1, CY_CORTEX_M7_1_APPL_ADDR);
 #endif /* CM7_DUAL */
 
